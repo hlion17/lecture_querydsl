@@ -1,18 +1,22 @@
 package study.querydsl.entity;
 
+import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.QueryResults;
 import com.querydsl.core.Tuple;
+import com.querydsl.core.types.ExpressionUtils;
+import com.querydsl.core.types.Projections;
+import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.core.types.dsl.CaseBuilder;
 import com.querydsl.core.types.dsl.Expressions;
-import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
-import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.Commit;
 import org.springframework.transaction.annotation.Transactional;
+import study.querydsl.dto.MemberDto;
+import study.querydsl.dto.QMemberDto;
+import study.querydsl.dto.UserDto;
 
 import javax.persistence.EntityManager;
 import javax.persistence.EntityManagerFactory;
@@ -28,7 +32,6 @@ import static study.querydsl.entity.QTeamEntity.teamEntity;
 
 @SpringBootTest
 @Transactional
-@Commit
 class MemberEntityTest {
 
     @PersistenceContext
@@ -448,5 +451,243 @@ class MemberEntityTest {
         System.out.println("resultWithConcat = " + resultWithConcat);
     }
 
+    /**
+     * Projection
+     * - 단일 타입
+     * - Tuple
+     * - DTO
+     */
+    @Test
+    void projection() {
+        // 단일타입
+        System.out.println("단일타입");
+        List<String> result = queryFactory.select(memberEntity.username)
+                                         .from(memberEntity)
+                                         .fetch();
+        for (String s : result) {
+            System.out.println("s = " + s);
+        }
+
+        // Tuple
+        System.out.println("Tuple 방식");
+        List<Tuple> resultWithTuple = queryFactory.select(memberEntity.username, memberEntity.age)
+                                        .from(memberEntity)
+                                        .fetch();
+        for (Tuple tuple : resultWithTuple) {
+            String username = tuple.get(memberEntity.username);
+            Integer age = tuple.get(memberEntity.age);
+            System.out.println("username = " + username);
+            System.out.println("age = " + age);
+        }
+
+        // DTO
+        // 1. JPQL: new Operation을 사용하여 조회하는 방법
+        System.out.println("JQPL Projection");
+        List<MemberDto> resultWithNewOperation = em.createQuery("select new study.querydsl.dto.MemberDto(m.username, m.age) from MemberEntity m", MemberDto.class)
+                                       .getResultList();
+
+        for (MemberDto memberDto : resultWithNewOperation) {
+            System.out.println("memberDto = " + memberDto);
+        }
+
+        /**
+         * 2. QueryDSL Dto Projection
+         * - setter 접근 방식
+         * - field 접근 방식
+         * - 생성자 접근 방식
+         * - Other Dto
+         */
+        // - setter
+        System.out.println("QueryDsl Projection - setter 방식");
+        List<MemberDto> resultWithQueryDslBySetter = queryFactory.select(Projections.bean(MemberDto.class,
+                                                    memberEntity.username,
+                                                    memberEntity.age))
+                                            .from(memberEntity)
+                                            .fetch();
+        for (MemberDto memberDto : resultWithQueryDslBySetter) {
+            System.out.println("memberDto = " + memberDto);
+        }
+
+        // - fields
+        System.out.println("QueryDsl Projection - fields 방식");
+        List<MemberDto> resultWithQueryDslByField = queryFactory.select(Projections.fields(MemberDto.class,
+                                                                         memberEntity.username,
+                                                                         memberEntity.age))
+                                                                 .from(memberEntity)
+                                                                 .fetch();
+        for (MemberDto memberDto : resultWithQueryDslBySetter) {
+            System.out.println("memberDto = " + memberDto);
+        }
+
+        // - constructor
+        System.out.println("QueryDsl Projection - 생성자 방식");
+        List<MemberDto> resultWithQueryDslByConstructor = queryFactory.select(Projections.constructor(MemberDto.class,
+                                                                        memberEntity.username,
+                                                                        memberEntity.age))
+                                                                .from(memberEntity)
+                                                                .fetch();
+        for (MemberDto memberDto : resultWithQueryDslByConstructor) {
+            System.out.println("memberDto = " + memberDto);
+        }
+
+        // - otherDto
+        System.out.println("QueryDsl Projection - 필드명이 다른 Dto 매칭 & scalar SubQuery");
+        QMemberEntity memberSub = new QMemberEntity("memberSub");
+        List<UserDto> resultWithQueryDslByOtherDto =
+                queryFactory.select(Projections.constructor(UserDto.class,
+                                    memberEntity.username.as("name"),
+                                    ExpressionUtils.as(select(memberSub.age.max()).from(memberSub), "age")))
+                            .from(memberEntity)
+                            .fetch();
+        for (UserDto userDto : resultWithQueryDslByOtherDto) {
+            System.out.println("memberDto = " + userDto);
+        }
+    }
+
+    /**
+     * Query Project By Dto
+     */
+    @Test
+    void findByQDtoQueryProjection() {
+        List<MemberDto> resultWithQDto
+                = queryFactory.select(new QMemberDto(memberEntity.username, memberEntity.age))
+                              .from()
+                              .fetch();
+
+        for (MemberDto memberDto : resultWithQDto) {
+            System.out.println("memberDto = " + memberDto);
+        }
+    }
+
+    /**
+     * QueryDsl 동적쿼리
+     * - BooleanBuilder
+     * - where 다중 파라미터
+     */
+    @Test
+    void dynamicQueryDsl() {
+        String usernameParam = "member1";
+        Integer agePram = null;
+
+        System.out.println("BuilderBuilder 사용");
+        List<MemberEntity> result = selectMember1(usernameParam, agePram);
+        for (MemberEntity entity : result) {
+            System.out.println("entity = " + entity);
+        }
+
+        System.out.println("where 다중 파라미터 사용");
+        List<MemberEntity> result2 = selectMember2(usernameParam, agePram);
+        for (MemberEntity entity : result2) {
+            System.out.println("entity = " + entity);
+        }
+
+    }
+
+    private List<MemberEntity> selectMember1(String usernameCond, Integer ageCond) {
+        BooleanBuilder builder = new BooleanBuilder();
+        if (usernameCond != null) {
+            builder.and(memberEntity.username.eq(usernameCond));
+        }
+        if (ageCond != null) {
+            builder.and(memberEntity.age.eq(ageCond));
+        }
+        return queryFactory.select(memberEntity)
+                    .from(memberEntity)
+                    .where(builder)
+                    .fetch();
+    }
+    private List<MemberEntity> selectMember2(String usernameCond, Integer ageCond) {
+        return queryFactory.select(memberEntity)
+                .from(memberEntity)
+//                .where(usernameEq(usernameCond), ageEq(ageCond))
+                .where(allEq(usernameCond, ageCond))  // 조건들을 조립하여 새로운 조건 생성 가능
+                .fetch();
+
+    }
+
+    private BooleanExpression usernameEq(String usernameCond) {
+        return usernameCond == null ? null : memberEntity.username.eq(usernameCond);
+    }
+
+    private BooleanExpression ageEq(Integer ageCond) {
+        return ageCond == null ? null : memberEntity.age.eq(ageCond);
+    }
+
+    private BooleanExpression allEq(String usernameCond, Integer ageCond) {
+        return usernameEq(usernameCond).and(ageEq(ageCond));
+    }
+
+    /**
+     * 수정, 삭제 벌크 연산
+     * - 벌크연산의 경우 DB에 직접쿼리 하기 때문에 DB와 영속성컨텍스트와 차이가 발생한다.
+     * - 때문에 벌크연산 후에는 영속성컨텍스트를 flush, clear 하여 DB와 동기화시켜주는 작업이 필요하다.
+     */
+    @Test
+    @Commit
+    void bulkUpdate() {
+        // member1 = 10 -> 비회원
+        // member2 = 20 -> 비회원
+        // member3 = 30 -> 유지
+        // member4 = 40 -> 유지
+        long count =
+                queryFactory.update(memberEntity)
+                            .set(memberEntity.username, "비회원")
+//                            .set(memberEntity.age, memberEntity.age.add(1))
+                            .where(memberEntity.age.lt(28))
+                            .execute();
+
+        em.flush();
+        em.clear();
+
+        // 1 member1 = 10 -> DB 비회원
+        // 2 member2 = 20 -> DB 비회원
+        // 3 member3 = 30 -> DB 유지
+        // 4 member4 = 40 -> DB 유지
+
+        // 조회시 영속성컨텍스트가 우선권을 가지기 때문에 이전 데이터가 조회된다.
+        List<MemberEntity> result = queryFactory.selectFrom(memberEntity)
+                                                .fetch();
+        for (MemberEntity entity : result) {
+            System.out.println("entity = " + entity);
+        }
+    }
+
+    @Test
+    void bulkDelete() {
+        long result =
+                queryFactory.delete(memberEntity)
+                            .where(memberEntity.age.gt(18))
+                            .execute();
+    }
+
+    /**
+     * SQL Function 호출하기
+     * - SqlDialect에 등록된 함수만 사용할 수 있다.
+     */
+    @Test
+    void sqlFunction() {
+        List<String> result =
+                queryFactory.select(Expressions.stringTemplate(
+                                    "function('replace', {0}, {1}, {2})",
+                                    memberEntity.username, "member", "M"))
+                            .from(memberEntity)
+                            .fetch();
+        for (String s : result) {
+            System.out.println("s = " + s);
+        }
+    }
+
+    @Test
+    void sqlFunction2() {
+
+        List<MemberEntity> result = queryFactory.select(memberEntity)
+                                               .from(memberEntity)
+//                                               .where(memberEntity.username.eq(Expressions.stringTemplate("function('lower', {0})", memberEntity.username)))
+                                               .where(memberEntity.username.eq(memberEntity.username.lower()))  // ANSI 표준 함수인 경우 QueryDsl에서 지원하는 경우가 많다.
+                                               .fetch();
+        for (MemberEntity entity : result) {
+            System.out.println("entity = " + entity);
+        }
+    }
 
 }
