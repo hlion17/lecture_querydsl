@@ -1,0 +1,2 @@
+### Member Search Test
+GET http://localhost:8080/v1/members?teamName=teamB&ageLoe=110&ageGoe=100

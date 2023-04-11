@@ -1,6 +1,6 @@
 spring:
   profiles:
-    active: local
+    active: test
   datasource:
     hikari:
       driver-class-name: org.h2.Driver
