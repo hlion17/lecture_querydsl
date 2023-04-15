@@ -1,2 +1,8 @@
 ### Member Search Test
 GET http://localhost:8080/v1/members?teamName=teamB&ageLoe=110&ageGoe=100
+
+### Member Search Paging Test1
+GET http://localhost:8080/v2/members?page=0&size=5
+
+### Member Search Paging Test2
+GET http://localhost:8080/v2/members?page=0&size=300
